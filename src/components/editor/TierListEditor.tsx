@@ -95,7 +95,6 @@ export default function TierListEditor() {
       }
 
       const itemId = active.id as string;
-      const fromTierId = findContainer(itemId);
       const overContainerId = resolveContainerId(over.id as string);
 
       // Figure out the index within the target container
@@ -116,20 +115,8 @@ export default function TierListEditor() {
         }
       }
 
-      // Only move if something actually changed
-      if (fromTierId === overContainerId) {
-        // Same container — reorder
-        const container =
-          overContainerId === null
-            ? useTierListStore.getState().unrankedItemIds
-            : useTierListStore
-                .getState()
-                .tiers.find((t) => t.id === overContainerId)?.itemIds ?? [];
-        const oldIndex = container.indexOf(itemId);
-        if (oldIndex === toIndex) return;
-      }
-
-      moveItem(itemId, fromTierId, overContainerId, toIndex);
+      // Store auto-discovers the source — just pass the target
+      moveItem(itemId, overContainerId, toIndex);
 
       const item = items[itemId];
       const targetLabel =
@@ -138,7 +125,7 @@ export default function TierListEditor() {
           : tiers.find((t) => t.id === overContainerId)?.label ?? "tier";
       announce(`Dropped ${item?.label ?? "item"} in ${targetLabel}`);
     },
-    [findContainer, resolveContainerId, moveItem, items, tiers, announce]
+    [resolveContainerId, moveItem, items, tiers, announce]
   );
 
   const handleDragCancel = useCallback(() => {
