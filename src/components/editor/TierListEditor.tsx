@@ -1,19 +1,26 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import {
   DndContext,
   DragOverlay,
-  closestCenter,
+  closestCorners,
   KeyboardSensor,
   PointerSensor,
   useSensor,
   useSensors,
   type DragStartEvent,
   type DragEndEvent,
+  type DragOverEvent,
+  type CollisionDetection,
+  pointerWithin,
+  rectIntersection,
+  getFirstCollision,
+  type UniqueIdentifier,
 } from "@dnd-kit/core";
 import {
   sortableKeyboardCoordinates,
+  arrayMove,
 } from "@dnd-kit/sortable";
 import { useTierListStore } from "@/stores/tierListStore";
 import type { Item } from "@/types";
@@ -22,6 +29,9 @@ import ItemPool from "./ItemPool";
 import EditorToolbar from "./EditorToolbar";
 import DraggableItem from "./DraggableItem";
 import LiveAnnouncer, { useLiveAnnouncer } from "./LiveAnnouncer";
+
+// ── Stable container IDs ──────────────────────
+const POOL_ID = "unranked-pool";
 
 export default function TierListEditor() {
   const tiers = useTierListStore((s) => s.tiers);
@@ -32,11 +42,15 @@ export default function TierListEditor() {
   const [activeItem, setActiveItem] = useState<Item | null>(null);
   const { message, announce } = useLiveAnnouncer();
 
+  // Track the last valid over-container to stabilize collision during fast moves
+  const lastOverId = useRef<UniqueIdentifier | null>(null);
+  const recentlyMovedToNewContainer = useRef(false);
+
   // ── Sensors ──────────────────────────────────
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
-      activationConstraint: { distance: 5 },
+      activationConstraint: { distance: 8 },
     }),
     useSensor(KeyboardSensor, {
       coordinateGetter: sortableKeyboardCoordinates,
@@ -45,28 +59,82 @@ export default function TierListEditor() {
 
   // ── Helpers ──────────────────────────────────
 
-  /** Find which container (tierId or null for pool) holds an item */
-  const findContainer = useCallback(
-    (itemId: string): string | null => {
-      for (const tier of tiers) {
-        if (tier.itemIds.includes(itemId)) return tier.id;
+  /** All container IDs (tier IDs + pool) */
+  const containerIds = useCallback((): string[] => {
+    return [...tiers.map((t) => t.id), POOL_ID];
+  }, [tiers]);
+
+  /** Get the ordered item IDs for a container */
+  const getContainerItems = useCallback(
+    (containerId: string | null): string[] => {
+      if (containerId === null || containerId === POOL_ID) {
+        return useTierListStore.getState().unrankedItemIds;
       }
-      return null; // in the unranked pool
+      const tier = useTierListStore.getState().tiers.find((t) => t.id === containerId);
+      return tier?.itemIds ?? [];
     },
-    [tiers]
+    []
   );
 
-  /** Resolve a droppable/sortable ID to a container ID */
-  const resolveContainerId = useCallback(
+  /** Find which container holds a given itemId */
+  const findContainer = useCallback(
     (id: string): string | null => {
-      // If the id is a tier id itself (dropped on the droppable zone)
-      if (tiers.some((t) => t.id === id)) return id;
-      // If it's the pool
-      if (id === "unranked-pool") return null;
-      // Otherwise it's an item id — find its container
-      return findContainer(id);
+      // Is it a container itself?
+      if (containerIds().includes(id)) return id;
+
+      // Search tiers
+      const state = useTierListStore.getState();
+      for (const tier of state.tiers) {
+        if (tier.itemIds.includes(id)) return tier.id;
+      }
+      if (state.unrankedItemIds.includes(id)) return POOL_ID;
+      return null;
     },
-    [tiers, findContainer]
+    [containerIds]
+  );
+
+  // ── Custom collision detection ───────────────
+  // Uses pointerWithin for containers + closestCorners for items.
+  // Falls back to rectIntersection. Stabilizes with lastOverId
+  // so the dragged item doesn't flicker between containers.
+
+  const collisionDetection: CollisionDetection = useCallback(
+    (args) => {
+      // If we just moved to a new container, keep the lastOverId stable
+      if (recentlyMovedToNewContainer.current && lastOverId.current) {
+        return [{ id: lastOverId.current }];
+      }
+
+      // First: try pointer-within (best for dropping into containers)
+      const pointerCollisions = pointerWithin(args);
+      const collisions = pointerCollisions.length > 0 ? pointerCollisions : rectIntersection(args);
+
+      let overId = getFirstCollision(collisions, "id");
+
+      if (overId != null) {
+        // If hovering over a container, prefer its sortable children
+        if (containerIds().includes(overId as string)) {
+          const containerItems = getContainerItems(overId as string);
+          if (containerItems.length > 0) {
+            const closestInContainer = closestCorners({
+              ...args,
+              droppableContainers: args.droppableContainers.filter(
+                (c) => c.id !== overId && containerItems.includes(c.id as string)
+              ),
+            });
+            const closestId = getFirstCollision(closestInContainer, "id");
+            if (closestId) {
+              overId = closestId;
+            }
+          }
+        }
+        lastOverId.current = overId;
+        return [{ id: overId }];
+      }
+
+      return [];
+    },
+    [containerIds, getContainerItems]
   );
 
   // ── Drag handlers ────────────────────────────
@@ -82,54 +150,106 @@ export default function TierListEditor() {
     [items, announce]
   );
 
-  const handleDragOver = useCallback(() => {}, []);
+  const handleDragOver = useCallback(
+    (event: DragOverEvent) => {
+      const { active, over } = event;
+      if (!over) return;
+
+      const activeId = active.id as string;
+      const overId = over.id as string;
+
+      const activeContainer = findContainer(activeId);
+      let overContainer = findContainer(overId);
+
+      // If over a container directly, use that container
+      if (containerIds().includes(overId)) {
+        overContainer = overId;
+      }
+
+      if (!activeContainer || !overContainer || activeContainer === overContainer) {
+        return; // Same container — let onDragEnd handle reordering
+      }
+
+      // Cross-container move: commit immediately so the UI updates live
+      recentlyMovedToNewContainer.current = true;
+
+      const overItems = getContainerItems(overContainer);
+      const overIndex = overItems.indexOf(overId);
+
+      // Determine insert index
+      let newIndex: number;
+      if (containerIds().includes(overId)) {
+        // Dropped on the container itself — append
+        newIndex = overItems.length;
+      } else {
+        // Dropped on an item — figure out before/after
+        const isBelowOverItem =
+          over &&
+          active.rect.current.translated &&
+          active.rect.current.translated.top > over.rect.top + over.rect.height / 2;
+
+        const modifier = isBelowOverItem ? 1 : 0;
+        newIndex = overIndex >= 0 ? overIndex + modifier : overItems.length;
+      }
+
+      // Normalize container to tierId | null
+      const toTierId = overContainer === POOL_ID ? null : overContainer;
+      moveItem(activeId, toTierId, newIndex);
+    },
+    [findContainer, containerIds, getContainerItems, moveItem]
+  );
 
   const handleDragEnd = useCallback(
     (event: DragEndEvent) => {
       const { active, over } = event;
       setActiveItem(null);
+      recentlyMovedToNewContainer.current = false;
 
       if (!over) {
         announce("Dropped outside — cancelled");
         return;
       }
 
-      const itemId = active.id as string;
-      const overContainerId = resolveContainerId(over.id as string);
+      const activeId = active.id as string;
+      const overId = over.id as string;
 
-      // Figure out the index within the target container
-      let toIndex = 0;
-      if (overContainerId === null) {
-        // Dropping into unranked pool
-        const pool = useTierListStore.getState().unrankedItemIds;
-        const overIndex = pool.indexOf(over.id as string);
-        toIndex = overIndex >= 0 ? overIndex : pool.length;
-      } else {
-        // Dropping into a tier
-        const tier = useTierListStore
-          .getState()
-          .tiers.find((t) => t.id === overContainerId);
-        if (tier) {
-          const overIndex = tier.itemIds.indexOf(over.id as string);
-          toIndex = overIndex >= 0 ? overIndex : tier.itemIds.length;
+      const activeContainer = findContainer(activeId);
+      const overContainer = findContainer(overId);
+
+      if (!activeContainer || !overContainer) return;
+
+      if (activeContainer === overContainer) {
+        // Same-container reorder
+        const containerItems = getContainerItems(activeContainer);
+        const oldIndex = containerItems.indexOf(activeId);
+        const newIndex = containerItems.indexOf(overId);
+
+        if (oldIndex !== -1 && newIndex !== -1 && oldIndex !== newIndex) {
+          const reordered = arrayMove(containerItems, oldIndex, newIndex);
+          const toTierId = activeContainer === POOL_ID ? null : activeContainer;
+
+          // Apply by moving to the new index
+          // We need the target index after removal, so use the reordered array position
+          const targetIndex = reordered.indexOf(activeId);
+          moveItem(activeId, toTierId, targetIndex);
         }
       }
+      // Cross-container was already handled in onDragOver
 
-      // Store auto-discovers the source — just pass the target
-      moveItem(itemId, overContainerId, toIndex);
-
-      const item = items[itemId];
+      const item = items[activeId];
+      const finalContainer = findContainer(activeId);
       const targetLabel =
-        overContainerId === null
+        finalContainer === POOL_ID || finalContainer === null
           ? "Unranked"
-          : tiers.find((t) => t.id === overContainerId)?.label ?? "tier";
+          : tiers.find((t) => t.id === finalContainer)?.label ?? "tier";
       announce(`Dropped ${item?.label ?? "item"} in ${targetLabel}`);
     },
-    [resolveContainerId, moveItem, items, tiers, announce]
+    [findContainer, getContainerItems, moveItem, items, tiers, announce]
   );
 
   const handleDragCancel = useCallback(() => {
     setActiveItem(null);
+    recentlyMovedToNewContainer.current = false;
     announce("Drag cancelled");
   }, [announce]);
 
@@ -146,11 +266,16 @@ export default function TierListEditor() {
       {/* DnD Context wraps everything */}
       <DndContext
         sensors={sensors}
-        collisionDetection={closestCenter}
+        collisionDetection={collisionDetection}
         onDragStart={handleDragStart}
         onDragOver={handleDragOver}
         onDragEnd={handleDragEnd}
         onDragCancel={handleDragCancel}
+        autoScroll={{
+          enabled: true,
+          threshold: { x: 0.2, y: 0.2 },
+          acceleration: 15,
+        }}
       >
         {/* Tier rows */}
         <div className="space-y-2">
@@ -162,8 +287,13 @@ export default function TierListEditor() {
         {/* Unranked item pool */}
         <ItemPool />
 
-        {/* Drag overlay — renders on top of everything */}
-        <DragOverlay dropAnimation={{ duration: 200, easing: "ease" }}>
+        {/* Drag overlay — rendered in a portal above everything */}
+        <DragOverlay
+          dropAnimation={{
+            duration: 200,
+            easing: "cubic-bezier(0.18, 0.67, 0.6, 1.22)",
+          }}
+        >
           {activeItem ? (
             <DraggableItem item={activeItem} isOverlay />
           ) : null}

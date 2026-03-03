@@ -8,22 +8,25 @@ import {
 import { useTierListStore } from "@/stores/tierListStore";
 import DraggableItem from "./DraggableItem";
 
+const POOL_ID = "unranked-pool";
+
 export default function ItemPool() {
   const items = useTierListStore((s) => s.items);
   const unrankedItemIds = useTierListStore((s) => s.unrankedItemIds);
 
   const { setNodeRef, isOver } = useDroppable({
-    id: "unranked-pool",
+    id: POOL_ID,
     data: { type: "pool" },
   });
 
   return (
     <div
-      className={`rounded-lg border-2 border-dashed p-4 transition-colors ${
+      className={[
+        "rounded-lg border-2 border-dashed p-4 transition-all duration-200",
         isOver
-          ? "border-indigo-400 bg-indigo-950/20"
-          : "border-gray-600 bg-gray-900/30"
-      }`}
+          ? "border-indigo-400 bg-indigo-950/20 shadow-lg shadow-indigo-500/10"
+          : "border-gray-600 bg-gray-900/30",
+      ].join(" ")}
     >
       <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-gray-400">
         Unranked Items
@@ -44,9 +47,18 @@ export default function ItemPool() {
         </SortableContext>
 
         {unrankedItemIds.length === 0 && (
-          <span className="text-sm text-gray-500 italic">
-            All items have been ranked! 🎉
-          </span>
+          <div
+            className={[
+              "flex h-10 w-full items-center justify-center rounded-md border-2 border-dashed transition-all duration-200",
+              isOver
+                ? "border-indigo-400 bg-indigo-900/20 text-indigo-300"
+                : "border-gray-700 text-gray-500",
+            ].join(" ")}
+          >
+            <span className="text-sm italic">
+              {isOver ? "Drop here" : "All items have been ranked! 🎉"}
+            </span>
+          </div>
         )}
       </div>
     </div>

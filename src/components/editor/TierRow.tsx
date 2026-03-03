@@ -49,11 +49,12 @@ export default function TierRow({ tier }: TierRowProps) {
 
   return (
     <div
-      className={`flex min-h-[72px] rounded-lg border transition-colors ${
+      className={[
+        "flex min-h-[72px] rounded-lg border transition-all duration-200",
         isOver
-          ? "border-indigo-400 bg-indigo-950/30"
-          : "border-gray-700 bg-gray-900/50"
-      }`}
+          ? "border-indigo-400 bg-indigo-950/30 shadow-lg shadow-indigo-500/10"
+          : "border-gray-700 bg-gray-900/50",
+      ].join(" ")}
     >
       {/* Tier label */}
       <div
@@ -93,11 +94,20 @@ export default function TierRow({ tier }: TierRowProps) {
           })}
         </SortableContext>
 
-        {/* Empty state */}
+        {/* Drop indicator for empty tiers */}
         {tier.itemIds.length === 0 && (
-          <span className="text-sm text-gray-500 italic px-2">
-            Drop items here
-          </span>
+          <div
+            className={[
+              "flex h-10 w-full items-center justify-center rounded-md border-2 border-dashed transition-all duration-200",
+              isOver
+                ? "border-indigo-400 bg-indigo-900/20 text-indigo-300"
+                : "border-gray-700 text-gray-500",
+            ].join(" ")}
+          >
+            <span className="text-sm italic">
+              {isOver ? "Drop here" : "Drag items here"}
+            </span>
+          </div>
         )}
       </div>
     </div>
