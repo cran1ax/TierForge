@@ -1,20 +1,16 @@
 "use client";
 
-import { useStore } from "zustand";
 import { useTierListStore } from "@/stores/tierListStore";
 
 export default function EditorToolbar() {
   const reset = useTierListStore((s) => s.reset);
+  const undo = useTierListStore((s) => s.undo);
+  const redo = useTierListStore((s) => s.redo);
+  const undoCount = useTierListStore((s) => s.undoStack.length);
+  const redoCount = useTierListStore((s) => s.redoStack.length);
 
-  // zundo v2: temporal store is on useTierListStore.temporal
-  const temporalStore = useTierListStore.temporal;
-  const undo = useStore(temporalStore, (s) => s.undo);
-  const redo = useStore(temporalStore, (s) => s.redo);
-  const pastStates = useStore(temporalStore, (s) => s.pastStates);
-  const futureStates = useStore(temporalStore, (s) => s.futureStates);
-
-  const canUndo = pastStates.length > 0;
-  const canRedo = futureStates.length > 0;
+  const canUndo = undoCount > 0;
+  const canRedo = redoCount > 0;
 
   return (
     <div className="flex items-center gap-3">
@@ -25,7 +21,7 @@ export default function EditorToolbar() {
                    hover:bg-gray-700 disabled:opacity-40 disabled:cursor-not-allowed
                    transition-colors"
         aria-label="Undo"
-        title={`Undo (${pastStates.length} steps)`}
+        title={`Undo (${undoCount} steps)`}
       >
         ↩ Undo
       </button>
@@ -36,7 +32,7 @@ export default function EditorToolbar() {
                    hover:bg-gray-700 disabled:opacity-40 disabled:cursor-not-allowed
                    transition-colors"
         aria-label="Redo"
-        title={`Redo (${futureStates.length} steps)`}
+        title={`Redo (${redoCount} steps)`}
       >
         Redo ↪
       </button>
@@ -55,7 +51,7 @@ export default function EditorToolbar() {
 
       {/* Step counter */}
       <span className="ml-auto text-xs text-gray-500">
-        {pastStates.length} undo · {futureStates.length} redo
+        {undoCount} undo · {redoCount} redo
       </span>
     </div>
   );

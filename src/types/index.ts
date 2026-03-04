@@ -53,6 +53,40 @@ export interface RenameTierOperation {
 
 export type Operation = MoveItemOperation | RenameTierOperation;
 
+// ── Inverse operations (for undo/redo) ────────
+// Each forward operation produces an inverse that can restore prior state
+// without snapshotting the entire store.
+
+/** Inverse of a MOVE_ITEM — moves it back to its original container + index */
+export interface InverseMoveItem {
+  type: "MOVE_ITEM";
+  itemId: string;
+  /** Where to restore the item (the *original* container) */
+  toTierId: string | null;
+  /** The index it was at before the move */
+  toIndex: number;
+}
+
+/** Inverse of a RENAME_TIER — restores the previous label */
+export interface InverseRenameTier {
+  type: "RENAME_TIER";
+  tierId: string;
+  /** The label to restore */
+  toLabel: string;
+}
+
+export type InverseOperation = InverseMoveItem | InverseRenameTier;
+
+/** A single entry on the undo/redo stack */
+export interface UndoEntry {
+  /** The inverse operation that will reverse this action */
+  inverse: InverseOperation;
+  /** The forward operation that will re-apply this action (used for redo) */
+  forward: InverseOperation;
+  /** Timestamp for debugging / future merge-window logic */
+  timestamp: number;
+}
+
 // ── DnD helper types ─────────────────────────
 
 /** Identifies where a draggable item currently lives */

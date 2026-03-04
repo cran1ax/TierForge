@@ -24,6 +24,7 @@ import {
 } from "@dnd-kit/sortable";
 import { useTierListStore } from "@/stores/tierListStore";
 import type { Item } from "@/types";
+import { useUndoRedoKeyboard } from "@/hooks/useUndoRedoKeyboard";
 import TierRow from "./TierRow";
 import ItemPool from "./ItemPool";
 import EditorToolbar from "./EditorToolbar";
@@ -41,6 +42,9 @@ export default function TierListEditor() {
 
   const [activeItem, setActiveItem] = useState<Item | null>(null);
   const { message, announce } = useLiveAnnouncer();
+
+  // Global Ctrl+Z / Ctrl+Shift+Z keyboard listener
+  useUndoRedoKeyboard();
 
   // Track the last valid over-container to stabilize collision during fast moves
   const lastOverId = useRef<UniqueIdentifier | null>(null);
