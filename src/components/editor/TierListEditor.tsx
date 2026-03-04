@@ -25,16 +25,37 @@ import {
 import { useTierListStore } from "@/stores/tierListStore";
 import type { Item } from "@/types";
 import { useUndoRedoKeyboard } from "@/hooks/useUndoRedoKeyboard";
+import { useAutosave, readDraft, clearDraft, type DraftSnapshot } from "@/hooks/useAutosave";
 import TierRow from "./TierRow";
 import ItemPool from "./ItemPool";
 import EditorToolbar from "./EditorToolbar";
 import DraggableItem from "./DraggableItem";
+import RecoveryBanner from "./RecoveryBanner";
 import LiveAnnouncer, { useLiveAnnouncer } from "./LiveAnnouncer";
 
 // ── Stable container IDs ──────────────────────
 const POOL_ID = "unranked-pool";
 
-export default function TierListEditor() {
+// ── Props ──────────────────────────────────────
+
+interface TierListEditorProps {
+  /**
+   * The persisted tier list UUID.
+   * Pass `null` for demo / offline mode (disables autosave).
+   */
+  listId?: string | null;
+  /**
+   * ISO timestamp of when the server last saved this list.
+   * Used to decide if a localStorage draft is newer.
+   * Not required in demo mode.
+   */
+  serverSavedAt?: string | null;
+}
+
+export default function TierListEditor({
+  listId = null,
+  serverSavedAt = null,
+}: TierListEditorProps) {
   const tiers = useTierListStore((s) => s.tiers);
   const title = useTierListStore((s) => s.title);
   const items = useTierListStore((s) => s.items);
@@ -42,6 +63,53 @@ export default function TierListEditor() {
 
   const [activeItem, setActiveItem] = useState<Item | null>(null);
   const { message, announce } = useLiveAnnouncer();
+
+  // ── Autosave (only when we have a real listId) ──
+  useAutosave(listId ?? null);
+
+  // ── Crash recovery ──────────────────────────
+  // Use lazy initializer to avoid setState-in-effect warnings with React 19 compiler.
+  const [pendingDraft, setPendingDraft] = useState<DraftSnapshot | null>(() => {
+    if (!listId) return null;
+    const draft = readDraft(listId);
+    if (!draft) return null;
+
+    // If we know the server timestamp, only offer recovery if the draft is newer
+    if (serverSavedAt) {
+      const draftTime = new Date(draft.savedAt).getTime();
+      const serverTime = new Date(serverSavedAt).getTime();
+      if (draftTime <= serverTime) {
+        // Draft is stale — clean it up silently
+        clearDraft(listId);
+        return null;
+      }
+    }
+
+    return draft;
+  });
+
+  const handleRestoreDraft = useCallback(() => {
+    if (!pendingDraft) return;
+
+    // Apply each tier's items into the store by using moveItem
+    // But it's simpler and safer to set the state directly via
+    // a "remote" batch — the store.set is internal, so we'll
+    // use the Zustand setState escape hatch instead.
+    useTierListStore.setState({
+      tiers: pendingDraft.tiers,
+      unrankedItemIds: pendingDraft.unrankedItemIds,
+      undoStack: [],
+      redoStack: [],
+    });
+
+    setPendingDraft(null);
+    if (listId) clearDraft(listId);
+  }, [pendingDraft, listId]);
+
+  const handleDiscardDraft = useCallback(() => {
+    setPendingDraft(null);
+    if (listId) clearDraft(listId);
+  }, [listId]);
 
   // Global Ctrl+Z / Ctrl+Shift+Z keyboard listener
   useUndoRedoKeyboard();
@@ -266,6 +334,15 @@ export default function TierListEditor() {
         <h1 className="text-2xl font-bold text-white">{title}</h1>
         <EditorToolbar />
       </div>
+
+      {/* Crash recovery banner */}
+      {pendingDraft && (
+        <RecoveryBanner
+          draft={pendingDraft}
+          onRestore={handleRestoreDraft}
+          onDiscard={handleDiscardDraft}
+        />
+      )}
 
       {/* DnD Context wraps everything */}
       <DndContext

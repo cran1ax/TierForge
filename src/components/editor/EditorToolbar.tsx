@@ -1,6 +1,17 @@
 "use client";
 
 import { useTierListStore } from "@/stores/tierListStore";
+import { useSaveStatus } from "@/hooks/useAutosave";
+import type { SaveStatus } from "@/hooks/useAutosave";
+
+// ── Save status display config ─────────────────
+
+const STATUS_CONFIG: Record<SaveStatus, { label: string; color: string; icon: string }> = {
+  idle:   { label: "",            color: "text-gray-500",   icon: "" },
+  saved:  { label: "Saved",      color: "text-emerald-400", icon: "✓" },
+  saving: { label: "Saving…",   color: "text-amber-400",   icon: "↻" },
+  error:  { label: "Save failed", color: "text-red-400",    icon: "✗" },
+};
 
 export default function EditorToolbar() {
   const reset = useTierListStore((s) => s.reset);
@@ -8,9 +19,11 @@ export default function EditorToolbar() {
   const redo = useTierListStore((s) => s.redo);
   const undoCount = useTierListStore((s) => s.undoStack.length);
   const redoCount = useTierListStore((s) => s.redoStack.length);
+  const saveStatus = useSaveStatus();
 
   const canUndo = undoCount > 0;
   const canRedo = redoCount > 0;
+  const { label, color, icon } = STATUS_CONFIG[saveStatus];
 
   return (
     <div className="flex items-center gap-3">
@@ -49,9 +62,15 @@ export default function EditorToolbar() {
         ✕ Reset
       </button>
 
-      {/* Step counter */}
-      <span className="ml-auto text-xs text-gray-500">
-        {undoCount} undo · {redoCount} redo
+      {/* Step counter + Save status */}
+      <span className="ml-auto flex items-center gap-3 text-xs text-gray-500">
+        <span>{undoCount} undo · {redoCount} redo</span>
+        {saveStatus !== "idle" && (
+          <span className={`flex items-center gap-1 ${color}`} aria-live="polite">
+            <span className={saveStatus === "saving" ? "animate-spin inline-block" : ""}>{icon}</span>
+            {label}
+          </span>
+        )}
       </span>
     </div>
   );

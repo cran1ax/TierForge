@@ -1,5 +1,5 @@
-import { neon } from "@neondatabase/serverless";
-import { drizzle } from "drizzle-orm/neon-http";
+import { neon, type NeonQueryFunction } from "@neondatabase/serverless";
+import { drizzle, type NeonHttpDatabase } from "drizzle-orm/neon-http";
 import * as schema from "./schema";
 
 // ──────────────────────────────────────────────
@@ -13,6 +13,10 @@ import * as schema from "./schema";
  *
  * The connection string is read from the `DATABASE_URL` env var
  * which Neon provides in its dashboard.
+ *
+ * **Lazy initialisation** — the connection is created on first
+ * access so that `import { db }` doesn't throw at build time
+ * when the env var isn't available.
  */
 
 function getConnectionString(): string {
@@ -26,7 +30,8 @@ function getConnectionString(): string {
   return url;
 }
 
-const sql = neon(getConnectionString());
+let _sql: NeonQueryFunction<false, false> | undefined;
+let _db: NeonHttpDatabase<typeof schema> | undefined;
 
 /**
  * Drizzle instance — import this wherever you need DB access:
@@ -35,5 +40,29 @@ const sql = neon(getConnectionString());
  * import { db } from "@/server/db";
  * const rows = await db.select().from(schema.users);
  * ```
+ *
+ * The instance is created lazily on first call, so importing
+ * this module during `next build` won't fail when DATABASE_URL
+ * is absent.
  */
-export const db = drizzle(sql, { schema });
+export function getDb(): NeonHttpDatabase<typeof schema> {
+  if (!_db) {
+    _sql = neon(getConnectionString());
+    _db = drizzle(_sql, { schema });
+  }
+  return _db;
+}
+
+/**
+ * Convenience alias — shorthand for `getDb()`.
+ *
+ * Using a getter on a plain object lets you write `db.select()`
+ * exactly like before, but the connection is still lazy.
+ */
+export const db = new Proxy({} as NeonHttpDatabase<typeof schema>, {
+  get(_target, prop, receiver) {
+    const realDb = getDb();
+    const value = Reflect.get(realDb, prop, receiver);
+    return typeof value === "function" ? value.bind(realDb) : value;
+  },
+});
