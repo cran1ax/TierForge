@@ -26,6 +26,7 @@ import { useTierListStore } from "@/stores/tierListStore";
 import type { Item } from "@/types";
 import { useUndoRedoKeyboard } from "@/hooks/useUndoRedoKeyboard";
 import { useAutosave, readDraft, clearDraft, type DraftSnapshot } from "@/hooks/useAutosave";
+import CollabProvider from "@/components/collab/CollabProvider";
 import TierRow from "./TierRow";
 import ItemPool from "./ItemPool";
 import EditorToolbar from "./EditorToolbar";
@@ -50,11 +51,28 @@ interface TierListEditorProps {
    * Not required in demo mode.
    */
   serverSavedAt?: string | null;
+  /**
+   * Room ID for real-time collaboration.
+   * Pass `null` / omit for solo editing (no socket connection).
+   */
+  roomId?: string | null;
+  /**
+   * Current user ID for collab presence + lock attribution.
+   * Mocked for now — will come from auth later.
+   */
+  userId?: string;
+  /**
+   * Display name shown to other collaborators.
+   */
+  displayName?: string;
 }
 
 export default function TierListEditor({
   listId = null,
   serverSavedAt = null,
+  roomId = null,
+  userId = "anonymous",
+  displayName = "Anonymous",
 }: TierListEditorProps) {
   const tiers = useTierListStore((s) => s.tiers);
   const title = useTierListStore((s) => s.title);
@@ -327,7 +345,7 @@ export default function TierListEditor({
 
   // ── Render ───────────────────────────────────
 
-  return (
+  const editorContent = (
     <div className="mx-auto max-w-4xl space-y-6 p-6">
       {/* Header */}
       <div className="space-y-4">
@@ -384,5 +402,21 @@ export default function TierListEditor({
       {/* Accessibility */}
       <LiveAnnouncer message={message} />
     </div>
+  );
+
+  // Wrap in CollabProvider when a roomId is provided
+  if (roomId) {
+    return (
+      <CollabProvider roomId={roomId} userId={userId} displayName={displayName}>
+        {editorContent}
+      </CollabProvider>
+    );
+  }
+
+  // Solo mode — no socket connection, provide default collab context
+  return (
+    <CollabProvider roomId="" userId="" displayName="">
+      {editorContent}
+    </CollabProvider>
   );
 }
