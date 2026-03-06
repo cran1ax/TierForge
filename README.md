@@ -35,6 +35,8 @@ A modern, collaborative tier list editor built with **Next.js 16**, **React 19**
 ### 🔄 Real-Time Collaboration
 - Standalone **Socket.IO server** (`socket-server/`) for operation relay
 - Room-based collaboration — multiple users can edit the same tier list
+- **One-click room creation**: click "🔗 Collaborate" to generate a unique room and redirect to `/room/[code]`
+- **Copy Invite Link**: share your room URL with friends in one click
 - **Item-level locking** — 2-second lock prevents conflicting moves on the same item
 - Operations rejected by the server are automatically **reverted** with a toast notification
 - Live presence indicator showing online participants
@@ -75,7 +77,8 @@ TierForge/
 ├── src/
 │   ├── app/                        # Next.js App Router
 │   │   ├── api/lists/[id]/route.ts # REST API (GET + PUT)
-│   │   ├── page.tsx                # Home page
+│   │   ├── room/[roomId]/page.tsx  # Collaboration room route
+│   │   ├── page.tsx                # Home page (solo mode)
 │   │   ├── layout.tsx              # Root layout
 │   │   └── globals.css             # Tailwind + dark theme
 │   ├── components/
@@ -213,9 +216,26 @@ The Socket.IO server runs on [http://localhost:3001](http://localhost:3001) (hea
 | Variable | Required | Default | Description |
 |---|---|---|---|
 | `DATABASE_URL` | Yes | — | Neon Postgres connection string |
-| `NEXT_PUBLIC_SOCKET_URL` | No | `http://localhost:3001` | Socket.IO server URL |
-| `PORT` (socket-server) | No | `3001` | Socket server port |
-| `CORS_ORIGIN` (socket-server) | No | `http://localhost:3000` | Allowed CORS origin |
+| `NEXT_PUBLIC_SOCKET_URL` | No | `http://localhost:3001` | Socket.IO server URL (set to Railway URL in production) |
+| `PORT` (socket-server) | No | `3001` | Socket server port (Railway sets this automatically) |
+| `CORS_ORIGINS` (socket-server) | No | `http://localhost:3000` | Comma-separated list of allowed origins |
+
+---
+
+## Deployment
+
+| Service | What it runs | URL |
+|---|---|---|
+| **Vercel** | Next.js frontend + API routes | `https://your-app.vercel.app` |
+| **Railway** | Socket.IO real-time server | `https://your-socket.up.railway.app` |
+| **Neon** | Postgres database | Managed — no URL to visit |
+
+1. Push to GitHub
+2. Deploy `socket-server/` to **Railway** (set Root Directory to `socket-server`)
+3. Deploy the root to **Vercel** (set `DATABASE_URL` and `NEXT_PUBLIC_SOCKET_URL`)
+4. Set `CORS_ORIGINS` on Railway to your Vercel URL
+
+See `.deploy-guide.md` (local only, git-ignored) for a detailed step-by-step walkthrough.
 
 ---
 
