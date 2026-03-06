@@ -36,6 +36,9 @@ yarn-error.log*
 # deployment guide (private — contains personal URLs)
 .deploy-guide.md
 
+# gemini prompts (private)
+.gemini-prompts.md
+
 # vercel
 .vercel
 
