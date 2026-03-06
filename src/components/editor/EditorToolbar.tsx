@@ -1,5 +1,7 @@
 "use client";
 
+import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { useTierListStore } from "@/stores/tierListStore";
 import { useSaveStatus } from "@/hooks/useAutosave";
 import type { SaveStatus } from "@/hooks/useAutosave";
@@ -20,7 +22,21 @@ const CONNECTION_CONFIG: Record<ConnectionStatus, { label: string; dotColor: str
   connected:    { label: "Live",         dotColor: "bg-emerald-400" },
 };
 
-export default function EditorToolbar() {
+interface EditorToolbarProps {
+  roomId?: string | null;
+}
+
+function generateRoomCode(): string {
+  const chars = "abcdefghijklmnopqrstuvwxyz0123456789";
+  let code = "";
+  for (let i = 0; i < 6; i++) {
+    code += chars[Math.floor(Math.random() * chars.length)];
+  }
+  return code;
+}
+
+export default function EditorToolbar({ roomId = null }: EditorToolbarProps) {
+  const router = useRouter();
   const reset = useTierListStore((s) => s.reset);
   const undo = useTierListStore((s) => s.undo);
   const redo = useTierListStore((s) => s.redo);
@@ -28,12 +44,27 @@ export default function EditorToolbar() {
   const redoCount = useTierListStore((s) => s.redoStack.length);
   const saveStatus = useSaveStatus();
   const { connectionStatus, participants } = useCollab();
+  const [copied, setCopied] = useState(false);
 
   const canUndo = undoCount > 0;
   const canRedo = redoCount > 0;
   const { label, color, icon } = STATUS_CONFIG[saveStatus];
   const conn = CONNECTION_CONFIG[connectionStatus];
   const isCollabActive = connectionStatus !== "disconnected";
+  const isInRoom = Boolean(roomId);
+
+  function handleCollaborate() {
+    const code = generateRoomCode();
+    router.push(`/room/${code}`);
+  }
+
+  function handleCopyInvite() {
+    const url = window.location.href;
+    navigator.clipboard.writeText(url).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  }
 
   return (
     <div className="flex items-center gap-3">
@@ -71,6 +102,32 @@ export default function EditorToolbar() {
       >
         ✕ Reset
       </button>
+
+      <div className="mx-2 h-6 w-px bg-gray-700" aria-hidden="true" />
+
+      {/* Collaborate — only in solo mode (no room yet) */}
+      {!isInRoom && (
+        <button
+          onClick={handleCollaborate}
+          className="rounded-md border border-indigo-600 bg-indigo-950 px-3 py-1.5 text-sm font-medium text-indigo-300
+                     hover:bg-indigo-900 transition-colors"
+          title="Start a live collaboration session"
+        >
+          🔗 Collaborate
+        </button>
+      )}
+
+      {/* Copy Invite Link — only when inside a room */}
+      {isInRoom && (
+        <button
+          onClick={handleCopyInvite}
+          className="rounded-md border border-indigo-600 bg-indigo-950 px-3 py-1.5 text-sm font-medium text-indigo-300
+                     hover:bg-indigo-900 transition-colors"
+          title="Copy the room link to share with friends"
+        >
+          {copied ? "✓ Copied!" : "📋 Copy Invite Link"}
+        </button>
+      )}
 
       {/* Step counter + Save status + Collab status */}
       <span className="ml-auto flex items-center gap-3 text-xs text-gray-500">

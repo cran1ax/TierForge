@@ -350,7 +350,7 @@ export default function TierListEditor({
       {/* Header */}
       <div className="space-y-4">
         <h1 className="text-2xl font-bold text-white">{title}</h1>
-        <EditorToolbar />
+        <EditorToolbar roomId={roomId} />
       </div>
 
       {/* Crash recovery banner */}
