@@ -21,7 +21,15 @@ import cors from "cors";
 // ── Config ─────────────────────────────────────
 
 const PORT = Number(process.env.PORT) || 3001;
-const CORS_ORIGIN = process.env.CORS_ORIGIN || "http://localhost:3000";
+
+// Support a comma-separated list of allowed origins via CORS_ORIGINS or the
+// legacy CORS_ORIGIN single-value env var. Example:
+//   CORS_ORIGINS="http://localhost:3000,https://your-app.vercel.app"
+const rawOrigins = process.env.CORS_ORIGINS || process.env.CORS_ORIGIN || "http://localhost:3000";
+const ALLOWED_ORIGINS = rawOrigins
+  .split(",")
+  .map((s) => s.trim())
+  .filter(Boolean);
 
 /** How long an item lock is held (ms) */
 const LOCK_DURATION_MS = 2_000;
@@ -189,7 +197,19 @@ function isValidOperation(op: unknown): op is Operation {
 // ── Express + Socket.IO setup ──────────────────
 
 const app = express();
-app.use(cors({ origin: CORS_ORIGIN }));
+// Use a function origin validator so we can allow a small set of production
+// domains (e.g. your Vercel app) as well as localhost during development.
+app.use(
+  cors({
+    origin: (origin, callback) => {
+      // `origin` will be undefined for non-browser requests (curl, server-to-server).
+      if (!origin) return callback(null, true);
+      if (ALLOWED_ORIGINS.includes(origin)) return callback(null, true);
+      return callback(new Error("CORS origin not allowed"));
+    },
+    credentials: true,
+  }),
+);
 
 // Health check endpoint
 app.get("/health", (_req, res) => {
@@ -211,8 +231,9 @@ const server = http.createServer(app);
 
 const io = new Server(server, {
   cors: {
-    origin: CORS_ORIGIN,
+    origin: ALLOWED_ORIGINS,
     methods: ["GET", "POST"],
+    credentials: true,
   },
   pingInterval: 25_000,
   pingTimeout: 20_000,
@@ -373,6 +394,6 @@ io.on("connection", (socket: Socket) => {
 
 server.listen(PORT, () => {
   console.log(`\n🚀 TierForge Socket Server running on http://localhost:${PORT}`);
-  console.log(`   CORS origin: ${CORS_ORIGIN}`);
+  console.log(`   CORS allowed origins: ${ALLOWED_ORIGINS.join(", ")}`);
   console.log(`   Lock duration: ${LOCK_DURATION_MS}ms\n`);
 });

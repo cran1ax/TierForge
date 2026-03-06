@@ -1,0 +1,11 @@
+# Ignore external and non-frontend code from linting
+/socket-server/**
+/dist/**
+/node_modules/**
+
+# Local dev files
+/.vscode/**
+.env*
+
+# Build artifacts
+/.next/**

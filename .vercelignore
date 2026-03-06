@@ -1,0 +1,20 @@
+# Prevent Vercel from uploading local-only artifacts and the socket-server folder
+/socket-server
+/.vscode
+/.github
+/tests
+/*.log
+
+# Node artifacts
+/node_modules
+/dist
+
+# Local env files
+.env*
+
+# Next.js artifacts
+/.next
+/out
+
+# Don't deploy README/examples
+README.md
