@@ -221,4 +221,4 @@ The Socket.IO server runs on [http://localhost:3001](http://localhost:3001) (hea
 
 ## License
 
-This project is for educational and portfolio purposes.
+This project is for educational and portfolio purposes. 
